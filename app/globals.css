@@ -2,18 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
+
 :root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
+  --foreground-rgb: 255, 255, 255;
+  --background-start-rgb: 15, 15, 15;
+  --background-end-rgb: 15, 15, 15;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
-  }
+html {
+  scroll-behavior: smooth !important;
 }
 
 body {
@@ -24,4 +22,54 @@ body {
       rgb(var(--background-end-rgb))
     )
     rgb(var(--background-start-rgb));
+  font-family: "Inter", "sans-serif";
+}
+
+::-webkit-scrollbar {
+  width: 12px; /* width of the entire scrollbar */
+}
+
+::-webkit-scrollbar-track {
+  background: #424242; /* color of the tracking area */
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #7b7b7b; /* color of the scroll thumb */
+  border-radius: 5px; /* roundness of the scroll thumb */
+  border: 3px solid #424242; /* creates padding around scroll thumb */
+}
+
+h1 {
+  font-size: clamp(24px, 4vw, 32px);
+  font-weight: 700;
+}
+
+h2 {
+  font-size: clamp(18px, 8vw, 24px);
+  font-weight: 600;
+}
+
+h3 {
+  font-size: clamp(16px, 8vw, 24px);
+  font-weight: 700;
+}
+
+p,
+ul,
+li {
+  font-size: clamp(12px, 3vw, 14px);
+}
+
+h5 {
+  font-size: clamp(14px, 3vw, 16px);
+}
+
+h6 {
+  font-size: clamp(8px, 3vw, 12px);
+}
+
+td,
+tr {
+  margin: 0;
+  padding: 0;
 }
