@@ -25,6 +25,23 @@ async function readDataCodes(fileName: string) {
   }
 }
 
+async function readDataClient(fileName: string) {
+  const filePath = getFilePath(fileName); // Use the previously defined getFilePath function
+  try {
+    const rawData = await fs.readFile(filePath, "utf8");
+    const data = JSON.parse(rawData);
+
+    const counts = data.prizes.map((prize: PrizeFormat) => ({
+      count: prize.count,
+    }));
+    // console.log(counts);
+    return counts;
+  } catch (error) {
+    // Handle the error, such as if the file does not exist
+    throw error;
+  }
+}
+
 async function readAllDataCodes() {
   const directoryPath = path.join(process.cwd(), "data/codes"); // Use the previously defined getFilePath function
   try {
@@ -81,6 +98,8 @@ type PrizeFormat = {
   name: string;
   claimed: boolean;
   winnerEmail: string | null;
+  rotate: number;
+  count: number;
 };
 
 // New server action for code validation and prize assignment
@@ -104,13 +123,40 @@ async function validateAndAssignPrize(
   codeEntry.used = true;
   codeEntry.email = email;
 
+  const chances = [5, 10, 20, 40, 80]; // Array representing the percentage chances
+
+  const weights = data.prizes.map((prize: PrizeFormat, index: number) => {
+    return chances[index];
+  });
+
+  // console.log(weights, "weights array");
+
   // Prize randomizer logic
   const unclaimedPrizes = data.prizes.filter(
     (prize: PrizeFormat) => !prize.claimed
   );
+
+  function weightedRandomIndex(weights: number[]): number {
+    const totalWeight = weights.reduce((acc, weight) => acc + weight, 0);
+    // console.log(totalWeight, "total weight");
+    let random = Math.random() * totalWeight;
+    // console.log(random, "random");
+    // console.log(weights.length, "weight length");
+
+    for (let i = 0; i < weights.length; i++) {
+      // console.log(random, "random in for");
+      // console.log(weights[i], "weights in for");
+      if (random < weights[i]) return i;
+      random -= weights[i];
+    }
+    // console.log(weights.length, "weight length after for");
+    return weights.length - 1;
+  }
+
   if (unclaimedPrizes.length > 0) {
-    const randomIndex = Math.floor(Math.random() * unclaimedPrizes.length);
-    const selectedPrize = unclaimedPrizes[randomIndex];
+    const weightedIndex = weightedRandomIndex(weights);
+    // console.log(weightedIndex, "index chose");
+    const selectedPrize = unclaimedPrizes[weightedIndex];
 
     // Mark the prize as claimed
     selectedPrize.count = selectedPrize.count - 1;
@@ -119,13 +165,51 @@ async function validateAndAssignPrize(
     }
     selectedPrize.winnerEmail.push(email);
 
-    // Save the updated data
+    codeEntry.prize = selectedPrize.name;
+
+    // Save the updated data t
     await writeData(data, fileName);
     await writeDataCodes(codeEntry, code);
 
     return { prizeName: selectedPrize.name, rotate: selectedPrize.rotate };
   } else {
     return { prizeName: "No more prizes left" };
+  }
+}
+
+async function emailSend(code: string) {
+  const codeEntry = await readDataCodes(code);
+
+  if (!codeEntry.prize || !codeEntry.email) {
+    throw new Error("prize or email not in db.");
+  }
+
+  const hostname =
+    process.env.NODE_ENV !== "production"
+      ? "http://localhost:3000"
+      : process.env.HOSTNAME;
+
+  const res = await fetch(`${hostname}/api/contact`, {
+    method: "POST",
+    body: JSON.stringify({
+      values: {
+        prize: codeEntry.prize,
+        email: codeEntry.email,
+      },
+    }),
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const errorText = await res.text();
+
+    // return response;
+    throw new Error(
+      `Failed to fetch email.text:${errorText}, status:${res.status}`
+    );
   }
 }
 
@@ -253,4 +337,6 @@ export {
   findUserByEmail,
   copiedCodeAdmin,
   readAllDataCodes,
+  emailSend,
+  readDataClient,
 };

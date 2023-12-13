@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import {
+  emailSend,
   readData,
   validateAndAssignPrize,
   writeData,
@@ -174,17 +175,21 @@ const Lucky = (props: Props) => {
             });
           }, 2000);
 
-          await fetch("/api/contact", {
-            method: "POST",
-            body: JSON.stringify({
-              ...formValues,
-              values: { ...values, prize: result.prizeName },
-            }),
-            headers: {
-              "Content-Type": "application/json",
-              Accept: "application/json",
-            },
-          });
+          await emailSend(formValues.values.code);
+
+          // console.log(res);
+
+          // await fetch("/api/contact", {
+          //   method: "POST",
+          //   body: JSON.stringify({
+          //     ...formValues,
+          //     values: { ...values, prize: result.prizeName },
+          //   }),
+          //   headers: {
+          //     "Content-Type": "application/json",
+          //     Accept: "application/json",
+          //   },
+          // });
         }
 
         // console.log("Success!");

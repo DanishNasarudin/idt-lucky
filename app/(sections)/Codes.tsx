@@ -6,6 +6,14 @@ import {
   readData,
 } from "../(serverActions)/manageJSON";
 import { useSession, signOut } from "next-auth/react";
+import { io } from "socket.io-client";
+
+const hostname =
+  process.env.NODE_ENV !== "production"
+    ? "http://localhost:5051"
+    : `https://luckysocket.idealtech.com.my`;
+
+const socket = io(`${hostname}`);
 
 type Props = {};
 
@@ -60,7 +68,7 @@ const Codes = (props: Props) => {
   const data = initialCodes.codes;
   const dataPrize = initialPrizes.prizes;
   const [buttonAction, setButtonAction] = useState(false);
-  const [copiedEmail, setCopiedEmail] = useState(false);
+  // const [copiedEmail, setCopiedEmail] = useState(false);
   // console.log(initialPrizes);
 
   useEffect(() => {
@@ -107,10 +115,44 @@ const Codes = (props: Props) => {
   const columnSize = 24;
   const columnSizePrize = 55;
 
+  type ButtonPress = {
+    codeCopied: string;
+  };
+
+  useEffect(() => {
+    socket.on("button-copy", ({ codeCopied }: ButtonPress) => {
+      if (codeCopied === "") return;
+      setCodes((currentCodes) => {
+        return {
+          ...currentCodes,
+          codes: currentCodes.codes.map((code) =>
+            code.code === codeCopied ? { ...code, copied: true } : code
+          ),
+        };
+      });
+    });
+    socket.on("button-reset", ({ codeCopied }: ButtonPress) => {
+      if (codeCopied === "") return;
+      setCodes((currentCodes) => {
+        return {
+          ...currentCodes,
+          codes: currentCodes.codes.map((code) =>
+            code.code === codeCopied ? { ...code, copied: false } : code
+          ),
+        };
+      });
+    });
+
+    // socket.off("button-copy");
+    // socket.off("button-reset");
+  }, []);
+
   const handleCodeCopy = async (event: React.MouseEvent<HTMLButtonElement>) => {
-    event.preventDefault();
+    // event.preventDefault();
 
     const codeValue = event.currentTarget.value;
+
+    socket.emit("button-copy", { codeCopied: codeValue });
 
     // Optimistically update the state
     setCodes((currentCodes) => {
@@ -143,9 +185,11 @@ const Codes = (props: Props) => {
   const handleResetCopy = async (
     event: React.MouseEvent<HTMLButtonElement>
   ) => {
-    event.preventDefault();
+    // event.preventDefault();
 
     const codeValue = event.currentTarget.value;
+
+    socket.emit("button-reset", { codeCopied: codeValue });
 
     // Optimistically update the state
     setCodes((currentCodes) => {
@@ -179,6 +223,7 @@ const Codes = (props: Props) => {
   const [buttonRefsCode, setButtonRefsCode] = useState<
     RefObject<HTMLButtonElement>[]
   >([]);
+  // console.log(buttonRefs, "check");
 
   useEffect(() => {
     // Assign a ref for each item in your data array
@@ -186,11 +231,14 @@ const Codes = (props: Props) => {
     setButtonRefsCode(data.map((_) => React.createRef<HTMLButtonElement>()));
   }, [dataPrize, data]);
 
+  // dataPrize, data
+
   // console.log(data);
 
   const handleCopyEmailHidden = (event: number, section: string) => {
     const buttonRef = buttonRefs[event];
     const buttonRefCode = buttonRefsCode[event];
+    // console.log(buttonRefs, "check");
     if (section === "code") {
       if (buttonRefCode && buttonRefCode.current) {
         buttonRefCode.current.click();
@@ -203,10 +251,10 @@ const Codes = (props: Props) => {
   };
 
   const handleCopyEmail = (event: number, section: string) => {
-    setCopiedEmail(true);
-    setTimeout(() => {
-      setCopiedEmail(false);
-    }, 1000);
+    // setCopiedEmail(true);
+    // setTimeout(() => {
+    //   setCopiedEmail(false);
+    // }, 1000);
 
     if (section === "code") {
       const buttonRefCode = buttonRefsCode[event];
@@ -220,11 +268,36 @@ const Codes = (props: Props) => {
       const buttonRef = buttonRefs[event];
 
       if (buttonRef && buttonRef.current) {
+        // console.log(buttonRef.current.value, "check");
         const valueToCopy = buttonRef.current.value;
         navigator.clipboard.writeText(valueToCopy);
         // Additional logic for copy confirmation
       }
     }
+  };
+
+  const [buttonHighlightEmail, setButtonHighlightEmail] = useState<
+    null | number
+  >(null);
+  const [buttonHighlightEmail2, setButtonHighlightEmail2] = useState<
+    null | number
+  >(null);
+
+  const handleCopyHighEmail = (index: number) => {
+    setButtonHighlightEmail((prev) => {
+      return prev === index ? null : index;
+    });
+    setTimeout(() => {
+      setButtonHighlightEmail(null);
+    }, 2000);
+  };
+  const handleCopyHighEmail2 = (index: number) => {
+    setButtonHighlightEmail2((prev) => {
+      return prev === index ? null : index;
+    });
+    setTimeout(() => {
+      setButtonHighlightEmail2(null);
+    }, 2000);
   };
 
   return (
@@ -314,7 +387,7 @@ const Codes = (props: Props) => {
                       className={`px-1`}
                       style={{ width: `${columnSize - 5}%` }}
                     >
-                      <p>{data.code}</p>
+                      <p className="select-none">{data.code}</p>
                     </div>
                     <div
                       className="px-1 border-l-[1px] border-zinc-800 text-transparent"
@@ -325,9 +398,18 @@ const Codes = (props: Props) => {
                         className={`relative overflow-x-clip mobilehover:hover:overflow-x-visible w-full cursor-pointer text-white`}
                       >
                         <p
-                          className={`absolute top-0 left-0 translate-y-[-90%] w-min mobilehover:hover:bg-zinc-700 px-2 py-1 rounded-md
+                          className={`
+                          ${
+                            buttonHighlightEmail2 === index
+                              ? "bg-green-500 mobilehover:hover:bg-green-400"
+                              : "mobilehover:hover:bg-zinc-700"
+                          }
+                          absolute top-0 left-0 translate-y-[-90%] w-min  px-2 py-1 rounded-md
                           `}
-                          onClick={() => handleCopyEmailHidden(index, "code")}
+                          onClick={() => {
+                            handleCopyEmailHidden(index, "code");
+                            handleCopyHighEmail2(index);
+                          }}
                         >
                           {data.email != null ? data.email : "none"}
                         </p>
@@ -356,9 +438,13 @@ const Codes = (props: Props) => {
                       style={{ width: `${columnSize - 5}%` }}
                     >
                       <button
-                        className="px-2 py-1 bg-zinc-700 mobilehover:hover:bg-zinc-600 rounded-md"
+                        className={`
+                        
+                        px-2 py-1 bg-zinc-700 mobilehover:hover:bg-zinc-600 rounded-md`}
                         value={data.code}
-                        onClick={(e) => handleCodeCopy(e)}
+                        onClick={(e) => {
+                          handleCodeCopy(e);
+                        }}
                       >
                         <svg
                           xmlns="http://www.w3.org/2000/svg"
@@ -444,6 +530,7 @@ const Codes = (props: Props) => {
                 //   winnerArray = data.winnerEmail[0];
                 // }
                 // console.log(winnerArray, "check");
+
                 return (
                   <div
                     key={index}
@@ -461,11 +548,28 @@ const Codes = (props: Props) => {
                     >
                       .
                       <div
-                        className={`relative overflow-x-clip mobilehover:hover:overflow-x-visible w-full cursor-pointer text-white`}
+                        className={`
+                        relative overflow-x-clip mobilehover:hover:overflow-x-visible w-full cursor-pointer text-white`}
                         // defaultValue={data.winnerEmail ? data.winnerEmail : ""}
-                        onClick={() => handleCopyEmailHidden(index, "prize")}
+                        onClick={() => {
+                          handleCopyEmailHidden(index, "prize");
+                          handleCopyHighEmail(index);
+                          // setButtonHighlight(true);
+                          // setTimeout(() => {
+                          //   setButtonHighlight(false);
+                          // }, 2000);
+                        }}
                       >
-                        <p className="absolute top-0 left-0 translate-y-[-90%] w-max mobilehover:hover:bg-zinc-700 px-2 py-1 rounded-md">
+                        <p
+                          className={`
+                        
+                        absolute top-0 left-0 translate-y-[-90%] w-max  px-2 py-1 rounded-md
+                        ${
+                          buttonHighlightEmail === index
+                            ? "bg-green-500 mobilehover:hover:bg-green-400"
+                            : "mobilehover:hover:bg-zinc-700"
+                        }`}
+                        >
                           {data.winnerEmail && data.winnerEmail.length > 0 ? (
                             <>
                               {data.winnerEmail[0]}
