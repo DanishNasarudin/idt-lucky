@@ -1,6 +1,8 @@
 "use client";
-import React, { useEffect, useState } from "react";
-import { readData, readDataClient } from "../(serverActions)/manageJSON";
+import { useSocket } from "@/lib/providers/socket-provider";
+import { cn } from "@/lib/utils";
+import { useEffect, useState } from "react";
+import { readDataClient } from "../(serverActions)/manageJSON";
 
 type Props = {};
 
@@ -21,28 +23,51 @@ const initialPrizeState: PrizeArray = {
 };
 
 const LuckyCounter = (props: Props) => {
-  const [initialPrizes, setPrizes] = useState<PrizeArray>(initialPrizeState);
-  const dataPrize = initialPrizes.prizes;
-  // console.log(initialPrizes);
+  const { socket } = useSocket();
+  // const [initialPrizes, setPrizes] = useState<PrizeArray>(initialPrizeState);
+  // const dataPrize = initialPrizes.prizes;
+  const [prizeClaimed, setPrizeClaimed] = useState(0);
+  const [prizeAvailable, setPrizeAvailable] = useState(0);
+
+  // console.log(dataPrize.reduce((acc, current) => acc + current.count, 0));
 
   useEffect(() => {
     // Function to fetch and update data
+    if (socket === null) return;
 
     const fetchData = () => {
-      readDataClient("common").then((data) => {
-        setPrizes({ ...initialPrizes, prizes: data });
+      readDataClient("common").then(({ countAvailable, countsClaimed }) => {
+        setPrizeAvailable(countAvailable);
+        setPrizeClaimed(countsClaimed);
       });
     };
 
     // Initial fetch
     fetchData();
 
+    socket.on("refetch-data", fetchData);
+
     // Set up an interval for re-fetching data every 10 minutes
     const interval = setInterval(fetchData, 600000); // 600000 ms = 10 minutes
 
     // Clean up interval on component unmount
-    return () => clearInterval(interval);
-  }, []);
+    return () => {
+      clearInterval(interval);
+      socket.off("refetch-data", fetchData);
+    };
+  }, [socket]);
+
+  const getColorClass = (value: number): string => {
+    if (value <= 25) {
+      return "text-red-500 bg-red-500"; // Red for values 10 or less
+    } else if (value <= 100) {
+      return "text-yellow-500 bg-yellow-500"; // Yellow for values between 11 and 50
+    } else if (value <= 250) {
+      return "text-green-500 bg-green-500";
+    } else {
+      return "text-white bg-white"; // Green for values above 50
+    }
+  };
 
   return (
     <div className="max-w-none sm:max-w-[1060px] mx-auto w-full py-8">
@@ -51,7 +76,7 @@ const LuckyCounter = (props: Props) => {
           <h2>Prize Counter</h2>
           <p>Grab them fast before they run out!</p>
         </div>
-        <div className="box-container max-w-[500px] w-full mx-auto text-center border-[1px] border-zinc-800 rounded-md">
+        {/* <div className="box-container max-w-[500px] w-full mx-auto text-center border-[1px] border-zinc-800 rounded-md">
           <div className="row-head flex py-2">
             <div className="w-full border-r-[1px] border-zinc-800 px-[2px]">
               RM 1,000
@@ -90,6 +115,33 @@ const LuckyCounter = (props: Props) => {
                     </div>
                   );
                 })}
+          </div>
+        </div> */}
+        <div className="flex w-full text-center">
+          <div className="w-full flex flex-col items-center">
+            <div className="flex">
+              <span
+                className={cn(
+                  "absolute flex border blur-xl bg-clip-text text-[80px] box-content font-extrabold text-transparent text-center select-none",
+                  getColorClass(prizeAvailable)
+                )}
+              >
+                {prizeAvailable}
+              </span>
+              <h1
+                className={cn(
+                  "relative justify-center flex items-center bg-clip-text text-[80px] font-extrabold text-transparent text-center select-auto",
+                  getColorClass(prizeAvailable)
+                )}
+              >
+                {prizeAvailable}
+              </h1>
+            </div>
+            <h2>Prizes Available</h2>
+          </div>
+          <div className="w-full">
+            <h1 className="text-[80px]">{prizeClaimed}</h1>
+            <h2>Prizes Claimed</h2>
           </div>
         </div>
       </div>

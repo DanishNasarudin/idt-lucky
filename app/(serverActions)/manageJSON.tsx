@@ -29,16 +29,36 @@ async function readDataClient(fileName: string) {
   const filePath = getFilePath(fileName); // Use the previously defined getFilePath function
   try {
     const rawData = await fs.readFile(filePath, "utf8");
-    const data = JSON.parse(rawData);
+    const data = JSON.parse(rawData) as PrizeData;
 
-    const counts = data.prizes.map((prize: PrizeFormat) => ({
-      count: prize.count,
-    }));
-    // console.log(counts);
-    return counts;
+    const countAvailable = data.prizes
+      .filter((item) => !item.claimed)
+      .reduce((acc, current) => acc + current.count, 0);
+    const countsClaimed = data.prizes.flatMap(
+      (prize) => prize.winnerEmail
+    ).length;
+    // console.log(countsClaimed, "CLAIMED");
+    return { countAvailable, countsClaimed };
   } catch (error) {
     // Handle the error, such as if the file does not exist
     throw error;
+  }
+}
+
+export async function readDataClientCheckLock() {
+  const filePath = getFilePath("common");
+  try {
+    const rawData = await fs.readFile(filePath, "utf8");
+    const data = JSON.parse(rawData) as PrizeData;
+
+    const checkAvailable = data.prizes.filter(
+      (item) => item.claimed && item.id === 12
+    );
+
+    const result = checkAvailable.length > 0;
+    return { result };
+  } catch (error) {
+    throw new Error(`${error}`);
   }
 }
 
@@ -79,7 +99,11 @@ function getFilePathCodes(code: string) {
 // Updated writeData function to write to a specific file based on the id
 async function writeData(data: any, fileName: string) {
   const filePath = getFilePath(fileName);
-  await fs.writeFile(filePath, JSON.stringify(data));
+  try {
+    await fs.writeFile(filePath, JSON.stringify(data));
+  } catch (error) {
+    throw new Error(`${error}`);
+  }
 }
 async function writeDataCodes(data: any, code: string) {
   const filePath = getFilePathCodes(code);
@@ -93,88 +117,272 @@ type DataFormat = {
   copied: boolean;
 };
 
-type PrizeFormat = {
+export type PrizeFormat = {
   id: number;
   name: string;
   claimed: boolean;
-  winnerEmail: string | null;
+  winnerEmail: string[];
   rotate: number;
+  rotateAlt: number;
   count: number;
+  percentile: number;
+  percentileAlt: number;
+};
+
+export type PrizeData = {
+  prizes: PrizeFormat[];
+  dataSaves: {
+    selectedPrizeLock: boolean;
+    selectedPrizeFullClaimed: boolean;
+    pityPullCounter: number;
+    pityHitCount: number;
+  };
 };
 
 // New server action for code validation and prize assignment
 async function validateAndAssignPrize(
   email: string,
-  code: string,
+  // code: string,
   fileName: string
 ) {
-  const data = await readData(fileName);
-  const codeEntry = await readDataCodes(code);
+  const data = (await readData(fileName)) as PrizeData;
+  // const codeEntry = await readDataCodes(code);
 
-  // const codeEntry = dataCodes
+  try {
+    const emailApplied = data.prizes.flatMap((prize) => prize.winnerEmail);
 
-  // Find the code entry
-  // const codeEntry = data.codes.find((entry: DataFormat) => entry.code === code);
-  if (!codeEntry || codeEntry.used) {
-    throw new Error("Invalid or used code");
-  }
+    const selectedPrizeLock = data.dataSaves.selectedPrizeLock;
 
-  // Mark the code as used and associate the email
-  codeEntry.used = true;
-  codeEntry.email = email;
+    const PITY_PULL_SET = selectedPrizeLock ? 85 : 100;
 
-  const chances = [5, 10, 20, 40, 80]; // Array representing the percentage chances
+    // console.log(emailApplied);
 
-  const weights = data.prizes.map((prize: PrizeFormat, index: number) => {
-    return chances[index];
-  });
-
-  // console.log(weights, "weights array");
-
-  // Prize randomizer logic
-  const unclaimedPrizes = data.prizes.filter(
-    (prize: PrizeFormat) => !prize.claimed
-  );
-
-  function weightedRandomIndex(weights: number[]): number {
-    const totalWeight = weights.reduce((acc, weight) => acc + weight, 0);
-    // console.log(totalWeight, "total weight");
-    let random = Math.random() * totalWeight;
-    // console.log(random, "random");
-    // console.log(weights.length, "weight length");
-
-    for (let i = 0; i < weights.length; i++) {
-      // console.log(random, "random in for");
-      // console.log(weights[i], "weights in for");
-      if (random < weights[i]) return i;
-      random -= weights[i];
+    if (emailApplied.includes(email)) {
+      throw new Error("Email already used for a prize."); // OPEN THIS WHEN DONE DEVELOP -------------------------------------------
     }
-    // console.log(weights.length, "weight length after for");
-    return weights.length - 1;
-  }
 
-  if (unclaimedPrizes.length > 0) {
-    const weightedIndex = weightedRandomIndex(weights);
-    // console.log(weightedIndex, "index chose");
-    const selectedPrize = unclaimedPrizes[weightedIndex];
+    // const loopTest = async (
+    //   data: PrizeData,
+    //   fileName: string,
+    //   email: string,
+    //   selectedPrizeLock: boolean
+    // ): Promise<{ prizeName: string; rotate: number }> => {
+    //   return new Promise<{ prizeName: string; rotate: number }>(
+    //     (resolve, reject) => {
+    //       let i = 1;
 
-    // Mark the prize as claimed
-    selectedPrize.count = selectedPrize.count - 1;
+    //       const timer = () =>
+    //         setTimeout(async () => {
+    //           const availablePrizes = data.prizes
+    //             .sort((a, b) =>
+    //               selectedPrizeLock
+    //                 ? a.percentile - b.percentile
+    //                 : a.percentileAlt - b.percentileAlt
+    //             )
+    //             .filter((prize) => !prize.claimed && prize.count > 0)
+    //             .filter((pity) =>
+    //               data.dataSaves.pityPullCounter === PITY_PULL_SET
+    //                 ? pity.id <= 5
+    //                 : pity
+    //             );
+
+    //           if (availablePrizes.length === 0) {
+    //             resolve({ prizeName: "No more prizes available", rotate: 0 });
+    //             return;
+    //           }
+
+    //           const weightedIndex = weightedRandomIndex(
+    //             availablePrizes,
+    //             selectedPrizeLock
+    //           ); // Ensure this function is defined and returns a number.
+    //           const selectedPrize = availablePrizes[weightedIndex];
+
+    //           selectedPrize.count -= 1;
+    //           if (selectedPrize.count === 0) {
+    //             selectedPrize.claimed = true;
+    //           }
+    //           selectedPrize.winnerEmail.push(email);
+
+    //           if (
+    //             selectedPrize.id === 1 ||
+    //             selectedPrize.id === 2 ||
+    //             selectedPrize.id === 3 ||
+    //             selectedPrize.id === 4 ||
+    //             selectedPrize.id === 5
+    //           ) {
+    //             if (data.dataSaves.pityPullCounter === PITY_PULL_SET) {
+    //               data.dataSaves.pityHitCount++;
+    //             }
+    //             data.dataSaves.pityPullCounter = 0;
+    //           } else {
+    //             data.dataSaves.pityPullCounter++;
+    //           }
+
+    //           if (selectedPrize.id === 12 && selectedPrize.claimed === true) {
+    //             data.dataSaves.selectedPrizeFullClaimed = true;
+    //             data.dataSaves.selectedPrizeLock = true;
+    //           }
+
+    //           await writeData(data, fileName); // Ensure this function is async and returns a Promise.
+
+    //           const checkAvailable = data.prizes.filter(
+    //             (item) => item.claimed && item.id === 12
+    //           );
+    //           const selectedAvailable = checkAvailable.length > 0;
+
+    //           i++;
+    //           if (i <= 60) {
+    //             timer(); // Recursively set the next timer if the loop is not yet finished.
+    //           } else {
+    //             resolve({
+    //               prizeName: selectedPrize.name,
+    //               rotate: selectedAvailable
+    //                 ? selectedPrize.rotate
+    //                 : selectedPrize.rotateAlt,
+    //             });
+    //           }
+    //         }, 50);
+    //       timer(); // Start the timer loop.
+    //     }
+    //   );
+    // };
+
+    // const result = await loopTest(data, fileName, email, selectedPrizeLock);
+
+    // return result;
+
+    // REAL SET -------------------------------------------------------------------------------------------
+    const availablePrizes = data.prizes
+      .sort((a, b) =>
+        selectedPrizeLock
+          ? a.percentile - b.percentile
+          : a.percentileAlt - b.percentileAlt
+      )
+      .filter((prize) => !prize.claimed && prize.count > 0)
+      .filter((pity) =>
+        data.dataSaves.pityPullCounter >= PITY_PULL_SET ? pity.id <= 5 : pity
+      );
+
+    if (availablePrizes.length === 0) {
+      return { prizeName: "No more prizes available", rotate: 0 };
+    }
+
+    const weightedIndex = weightedRandomIndex(
+      availablePrizes,
+      selectedPrizeLock
+    ); // Ensure this function is defined and returns a number.
+    const selectedPrize = availablePrizes[weightedIndex];
+
+    selectedPrize.count -= 1;
     if (selectedPrize.count === 0) {
       selectedPrize.claimed = true;
     }
     selectedPrize.winnerEmail.push(email);
 
-    codeEntry.prize = selectedPrize.name;
+    if (
+      selectedPrize.id === 1 ||
+      selectedPrize.id === 2 ||
+      selectedPrize.id === 3 ||
+      selectedPrize.id === 4 ||
+      selectedPrize.id === 5
+    ) {
+      if (data.dataSaves.pityPullCounter >= PITY_PULL_SET) {
+        data.dataSaves.pityHitCount++;
+      }
+      data.dataSaves.pityPullCounter = 0;
+    } else {
+      data.dataSaves.pityPullCounter++;
+    }
 
-    // Save the updated data t
-    await writeData(data, fileName);
-    await writeDataCodes(codeEntry, code);
+    if (selectedPrize.id === 12 && selectedPrize.claimed === true) {
+      data.dataSaves.selectedPrizeFullClaimed = true;
+      data.dataSaves.selectedPrizeLock = true;
+    }
 
-    return { prizeName: selectedPrize.name, rotate: selectedPrize.rotate };
-  } else {
-    return { prizeName: "No more prizes left" };
+    const checkAvailable = data.prizes.filter(
+      (item) => item.claimed && item.id === 12
+    );
+    const selectedAvailable = checkAvailable.length > 0;
+
+    if (selectedAvailable) {
+      data.dataSaves.selectedPrizeLock = true;
+    }
+
+    await writeData(data, fileName); // Ensure this function is async and returns a Promise.
+
+    return {
+      prizeName: selectedPrize.name,
+      rotate: selectedAvailable
+        ? selectedPrize.rotate
+        : selectedPrize.rotateAlt,
+    };
+  } catch (error) {
+    const e = error as Error;
+    throw new Error(`${e.message}`);
   }
+}
+
+function weightedRandomIndex(
+  prizes: PrizeFormat[],
+  prizeLock: boolean
+): number {
+  const totalWeight = prizes.reduce(
+    (acc, prize) =>
+      prizeLock ? acc + prize.percentile : acc + prize.percentileAlt,
+    0
+  );
+
+  let random = Math.random() * totalWeight;
+  // console.log(random, "CHECK");
+  for (let i = 0; i < prizes.length; i++) {
+    if (random < (prizeLock ? prizes[i].percentile : prizes[i].percentileAlt)) {
+      // console.log(i, random, prizes[i].percentile, "CHEK");
+      return i;
+    }
+    random -= prizeLock ? prizes[i].percentile : prizes[i].percentileAlt;
+  }
+
+  return prizes.length - 1;
+}
+
+export async function triggerSelectedPrize() {
+  const data = (await readData("common")) as PrizeData;
+  const finalData = data.prizes.map((prize) => {
+    if (prize.id === 12 || prize.id === 13 || prize.id === 14) {
+      if (prize.claimed === false) {
+        return {
+          ...prize,
+          claimed: true,
+        };
+      } else {
+        if (prize.count > 0) {
+          return {
+            ...prize,
+            claimed: false,
+          };
+        } else {
+          return { ...prize };
+        }
+      }
+    } else {
+      return { ...prize };
+    }
+  });
+
+  await writeData(
+    {
+      prizes: finalData,
+      dataSaves: {
+        selectedPrizeLock: data.dataSaves.selectedPrizeFullClaimed
+          ? data.dataSaves.selectedPrizeLock
+          : !data.dataSaves.selectedPrizeLock,
+        selectedPrizeFullClaimed: data.dataSaves.selectedPrizeFullClaimed,
+        pityPullCounter: data.dataSaves.pityPullCounter,
+        pityHitCount: data.dataSaves.pityHitCount,
+      },
+    },
+    "common"
+  );
 }
 
 async function emailSend(code: string) {
@@ -329,14 +537,15 @@ async function findUserByEmail(
 }
 
 export {
-  readData,
-  writeData,
-  queueWrite,
-  deleteOldestFiles,
-  validateAndAssignPrize,
-  findUserByEmail,
   copiedCodeAdmin,
-  readAllDataCodes,
+  deleteOldestFiles,
   emailSend,
+  findUserByEmail,
+  queueWrite,
+  readAllDataCodes,
+  readData,
   readDataClient,
+  validateAndAssignPrize,
+  writeData
 };
+

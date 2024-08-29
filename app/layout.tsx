@@ -4,6 +4,7 @@ import { Inter } from "next/font/google";
 import Footer from "./(components)/Footer";
 import "./globals.css";
 
+import { SocketProvider } from "@/lib/providers/socket-provider";
 import { getServerSession } from "next-auth";
 import SessionProvider from "./(components)/SessionProvider";
 
@@ -48,10 +49,12 @@ export default async function RootLayout({
     <html lang="en">
       <body className={`${inter.className} relative`}>
         <SessionProvider session={session}>
+          <SocketProvider>
           <Navbar />
           <div className="mx-auto">{children}</div>
           <div className="h-[30vh]"></div>
           <Footer />
+          </SocketProvider>
         </SessionProvider>
       </body>
     </html>

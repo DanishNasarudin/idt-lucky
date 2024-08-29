@@ -1,19 +1,25 @@
+import { getServerSession } from "next-auth";
 import { Inter } from "next/font/google";
-import Hero from "./(sections)/Hero";
+import { redirect } from "next/navigation";
+import { Toaster } from "sonner";
 import Lucky from "./(sections)/Lucky";
 import LuckyCounter from "./(sections)/LuckyCounter";
-import Terms from "./(sections)/Terms";
 
 const inter = Inter({ subsets: ["latin"] });
 
-export default function Home() {
+export default async function Home() {
+  const session = await getServerSession();
+  if (!session || !session.user) {
+    redirect("/api/auth/signin");
+  }
   return (
     <main className={`${inter.className} flex flex-col mx-auto`}>
       {/* <section className="h-[80px]"></section> */}
-      <Hero />
+      {/* <Hero /> */}
       <LuckyCounter />
       <Lucky />
-      <Terms />
+      <Toaster richColors theme="dark" />
+      {/* <Terms /> */}
     </main>
   );
 }

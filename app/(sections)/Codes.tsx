@@ -1,19 +1,22 @@
 "use client";
-import React, { useRef, useState, useEffect, RefObject } from "react";
+import { useSocket } from "@/lib/providers/socket-provider";
+import { cn } from "@/lib/utils";
+import { signOut, useSession } from "next-auth/react";
+import React, { RefObject, useEffect, useState } from "react";
 import {
   copiedCodeAdmin,
+  PrizeData,
   readAllDataCodes,
   readData,
+  triggerSelectedPrize,
 } from "../(serverActions)/manageJSON";
-import { useSession, signOut } from "next-auth/react";
-import { io } from "socket.io-client";
 
-const hostname =
-  process.env.NODE_ENV !== "production"
-    ? "http://localhost:5051"
-    : `https://luckysocket.idealtech.com.my`;
+// const hostname =
+//   process.env.NODE_ENV !== "production"
+//     ? "http://localhost:5051"
+//     : `https://luckysocket.idealtech.com.my`;
 
-const socket = io(`${hostname}`);
+// const socket = io(`${hostname}`);
 
 type Props = {};
 
@@ -39,7 +42,7 @@ type DataArray = {
   codes: DataFormat[];
 };
 
-const initialPrizeState: PrizeArray = {
+const initialPrizeState: PrizeData = {
   prizes: [
     {
       id: 0,
@@ -47,8 +50,18 @@ const initialPrizeState: PrizeArray = {
       claimed: false,
       winnerEmail: [],
       count: 0,
+      rotate: 0,
+      rotateAlt: 0,
+      percentile: 0,
+      percentileAlt: 0,
     },
   ],
+  dataSaves: {
+    pityPullCounter: 0,
+    pityHitCount: 0,
+    selectedPrizeLock: false,
+    selectedPrizeFullClaimed: false,
+  },
 };
 const initialCodeState: DataArray = {
   codes: [
@@ -62,8 +75,10 @@ const initialCodeState: DataArray = {
 };
 
 const Codes = (props: Props) => {
+  const { socket } = useSocket();
+
   const { data: session } = useSession();
-  const [initialPrizes, setPrizes] = useState<PrizeArray>(initialPrizeState);
+  const [initialPrizes, setPrizes] = useState<PrizeData>(initialPrizeState);
   const [initialCodes, setCodes] = useState<DataArray>(initialCodeState);
   const data = initialCodes.codes;
   const dataPrize = initialPrizes.prizes;
@@ -73,12 +88,18 @@ const Codes = (props: Props) => {
 
   useEffect(() => {
     // Function to fetch and update data
+    if (socket === null) return;
 
     const fetchData = () => {
+      // console.log("fetched");
       setButtonAction(true);
       readData("common")
         .then((data) => {
-          setPrizes({ ...initialPrizes, prizes: data.prizes });
+          setPrizes({
+            ...initialPrizes,
+            prizes: data.prizes,
+            dataSaves: data.dataSaves,
+          });
         })
         .then(() =>
           readAllDataCodes().then((data) => {
@@ -91,18 +112,27 @@ const Codes = (props: Props) => {
     // Initial fetch
     fetchData();
 
+    socket.on("refetch-data", fetchData);
+
     // Set up an interval for re-fetching data every 1 minutes
     const interval = setInterval(fetchData, 60000); // 60000 ms = 1 minutes
 
     // Clean up interval on component unmount
-    return () => clearInterval(interval);
-  }, []);
+    return () => {
+      clearInterval(interval);
+      socket.off("refetch-data", fetchData);
+    };
+  }, [socket]);
 
   const fetchData = () => {
     setButtonAction(true);
     readData("common")
       .then((data) => {
-        setPrizes({ ...initialPrizes, prizes: data.prizes });
+        setPrizes({
+          ...initialPrizes,
+          prizes: data.prizes,
+          dataSaves: data.dataSaves,
+        });
       })
       .then(() =>
         readAllDataCodes().then((data) => {
@@ -119,40 +149,81 @@ const Codes = (props: Props) => {
     codeCopied: string;
   };
 
-  useEffect(() => {
-    socket.on("button-copy", ({ codeCopied }: ButtonPress) => {
-      if (codeCopied === "") return;
-      setCodes((currentCodes) => {
-        return {
-          ...currentCodes,
-          codes: currentCodes.codes.map((code) =>
-            code.code === codeCopied ? { ...code, copied: true } : code
-          ),
-        };
-      });
-    });
-    socket.on("button-reset", ({ codeCopied }: ButtonPress) => {
-      if (codeCopied === "") return;
-      setCodes((currentCodes) => {
-        return {
-          ...currentCodes,
-          codes: currentCodes.codes.map((code) =>
-            code.code === codeCopied ? { ...code, copied: false } : code
-          ),
-        };
-      });
-    });
+  // Socket io detectors ----------------------------------------------------------------
 
+  useEffect(() => {
+    if (socket === null) return;
+
+    // socket.on("button-copy", ({ codeCopied }: ButtonPress) => {
+    //   if (codeCopied === "") return;
+    //   setCodes((currentCodes) => {
+    //     return {
+    //       ...currentCodes,
+    //       codes: currentCodes.codes.map((code) =>
+    //         code.code === codeCopied ? { ...code, copied: true } : code
+    //       ),
+    //     };
+    //   });
+    // });
+    // socket.on("button-reset", ({ codeCopied }: ButtonPress) => {
+    //   if (codeCopied === "") return;
+    //   setCodes((currentCodes) => {
+    //     return {
+    //       ...currentCodes,
+    //       codes: currentCodes.codes.map((code) =>
+    //         code.code === codeCopied ? { ...code, copied: false } : code
+    //       ),
+    //     };
+    //   });
+    // });
+    // const socketTest = () => {
+    //   console.log("passed socket");
+    // };
+
+    const socketButtonCopy = ({ copied }: { copied: string }) => {
+      // console.log(copied, "COPIED");
+      if (copied === "") return;
+      setCodes((currentCodes) => {
+        return {
+          ...currentCodes,
+          codes: currentCodes.codes.map((code) =>
+            code.code === copied ? { ...code, copied: true } : code
+          ),
+        };
+      });
+    };
+    const socketButtonReset = ({ copied }: { copied: string }) => {
+      // console.log(copied, "RESET");
+      if (copied === "") return;
+      setCodes((currentCodes) => {
+        return {
+          ...currentCodes,
+          codes: currentCodes.codes.map((code) =>
+            code.code === copied ? { ...code, copied: false } : code
+          ),
+        };
+      });
+    };
+
+    socket.on("button-copy", socketButtonCopy);
+    socket.on("button-reset", socketButtonReset);
+    // socket.on("refetch-data", socketTest);
+
+    return () => {
+      socket.off("button-copy", socketButtonCopy);
+      socket.off("button-reset", socketButtonReset);
+      // socket.off("refetch-data", socketTest);
+    };
     // socket.off("button-copy");
     // socket.off("button-reset");
-  }, []);
+  }, [socket]);
 
   const handleCodeCopy = async (event: React.MouseEvent<HTMLButtonElement>) => {
     // event.preventDefault();
 
     const codeValue = event.currentTarget.value;
 
-    socket.emit("button-copy", { codeCopied: codeValue });
+    socket.emit("button-copy", { copied: codeValue });
 
     // Optimistically update the state
     setCodes((currentCodes) => {
@@ -189,7 +260,7 @@ const Codes = (props: Props) => {
 
     const codeValue = event.currentTarget.value;
 
-    socket.emit("button-reset", { codeCopied: codeValue });
+    socket.emit("button-reset", { copied: codeValue });
 
     // Optimistically update the state
     setCodes((currentCodes) => {
@@ -300,6 +371,10 @@ const Codes = (props: Props) => {
     }, 2000);
   };
 
+  const checkSelectedPrizeLock = dataPrize.filter(
+    (item) => item.id === 12 && item.claimed === true
+  );
+
   return (
     <div className="max-w-none sm:max-w-[1060px] mx-auto w-full py-10 px-4 sm:px-0 flex flex-col gap-16">
       {/* <div>
@@ -308,7 +383,7 @@ const Codes = (props: Props) => {
             return <div key={index}>{data.code}</div>;
           })}
       </div> */}
-      <div className="w-full sm:w-4/5 mx-auto flex flex-col gap-4">
+      {/* <div className="w-full sm:w-4/5 mx-auto flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <p>Admin: {session?.user?.name}</p>
           <div className="flex gap-4 items-center">
@@ -488,9 +563,52 @@ const Codes = (props: Props) => {
               })}
           </div>
         </div>
-      </div>
+      </div> */}
       <div className="w-full sm:w-4/5 mx-auto flex flex-col gap-4">
-        <h2>Available Prizes</h2>
+        <div className="flex items-center justify-between">
+          <p>Admin: {session?.user?.name}</p>
+          <div className="flex gap-4 items-center">
+            <button
+              className="border-[1px] px-2 py-1 rounded-md border-zinc-800 text-zinc-600
+              mobilehover:hover:border-zinc-500 mobilehover:hover:text-zinc-300"
+              onClick={() => {
+                triggerSelectedPrize();
+                socket.emit("refetch-data", { copied: true });
+              }}
+            >
+              {checkSelectedPrizeLock.length > 0 ? (
+                <p>Unlock Yushiro</p>
+              ) : (
+                <p>Lock Yushiro</p>
+              )}
+            </button>
+            <button
+              className="border-[1px] px-2 py-1 rounded-md border-zinc-800 text-zinc-600
+              mobilehover:hover:border-zinc-500 mobilehover:hover:text-zinc-300"
+              onClick={() => fetchData()}
+            >
+              {buttonAction ? <p>Loading data...</p> : <p>Refresh Data</p>}
+            </button>
+            <button
+              className="border-[1px] px-2 py-1 rounded-md border-zinc-800 text-zinc-600
+            mobilehover:hover:border-zinc-500 mobilehover:hover:text-zinc-300"
+              onClick={() => signOut()}
+            >
+              <p>Sign Out</p>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="w-full sm:w-4/5 mx-auto flex flex-col gap-4">
+        <div className="flex justify-between">
+          <h2>Available Prizes</h2>
+          <div className="flex gap-8">
+            <h2>Pity Counter: {initialPrizes.dataSaves.pityPullCounter}</h2>
+            <h2>Pity Hit: {initialPrizes.dataSaves.pityHitCount}</h2>
+          </div>
+        </div>
+
         <div className="table-container">
           <div className="head w-full flex py-1.5 items-center border-b-[1px] border-zinc-800">
             <div
@@ -519,7 +637,7 @@ const Codes = (props: Props) => {
             </div>
           </div>
           <div
-            className={`body max-h-[370px] ${
+            className={`body max-h-[670px] ${
               initialPrizes.prizes.length > 10 ? `overflow-y-scroll` : ``
             } `}
           >
@@ -534,7 +652,10 @@ const Codes = (props: Props) => {
                 return (
                   <div
                     key={index}
-                    className="rows w-full flex border-t-[1px] border-zinc-800 py-1.5 items-center"
+                    className={cn(
+                      "rows w-full flex border-t-[1px] border-zinc-800 py-1.5 items-center",
+                      data.id <= 5 && "bg-zinc-900"
+                    )}
                   >
                     <div
                       className={`px-1`}
